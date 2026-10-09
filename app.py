@@ -1,66 +1,49 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
+from flask import Flask, request, jsonify
 
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    from backports.zoneinfo import ZoneInfo
+app = Flask(__name__)
 
-# ============================================================
-# CONFIGURAÇÃO DO CLIENTE ZERO (Rio Branco - Acre)
-# ============================================================
+# Configuração do cliente (Acre)
 configuracao_cliente_acre = {
     "nome_loja": "Comércio do Silva",
-    "fuso_horario": "America/Rio_Branco",  # Fuso oficial do Acre
-    "abertura": 3,  # 08:00 AM
-    "fechamento": 18,  # 18:00 (06:00 PM)
-    "dias_uteis": [0, 1, 2, 3, 4, 5, 6, 7]  # Segunda a Sexta
+    "fuso_horario": "America/Rio_Branco",
+    "abertura": 8,   # 08:00
+    "fechamento": 18, # 18:00
+    "dias_uteis": [0, 1, 2, 3, 4]  # Segunda a Sexta
 }
 
-
 def responder_mensagem_cliente(mensagem_recebida: str, dados_cliente: dict) -> str:
+    fuso_nome = dados_cliente.get("fuso_horario", "America/Rio_Branco")
     try:
-        # 1. Carrega o fuso do Acre e verifica o horário
-        fuso_nome = dados_cliente.get("fuso_horario", "America/Rio_Branco")
-        try:
-            agora = datetime.now(ZoneInfo(fuso_nome))
-        except Exception:
-            agora = datetime.now()
+        agora = datetime.now(ZoneInfo(fuso_nome))
+    except Exception:
+        agora = datetime.now()
 
-        abertura = dados_cliente.get("abertura", 8)
-        fechamento = dados_cliente.get("fechamento", 18)
-        dias_uteis = dados_cliente.get("dias_uteis", [0, 1, 2, 3, 4])
+    abertura = dados_cliente.get("abertura", 8)
+    fechamento = dados_cliente.get("fechamento", 18)
+    dias_uteis = dados_cliente.get("dias_uteis", [0, 1, 2, 3, 4])
 
-        is_open = (agora.weekday() in dias_uteis) and (abertura <= agora.hour < fechamento)
+    is_open = (agora.weekday() in dias_uteis) and (abertura <= agora.hour < fechamento)
+    nome = dados_cliente.get("nome_loja", "nossa loja")
 
-        nome = dados_cliente.get("nome_loja", "nossa loja")
+    if is_open:
+        return f"Seja bem-vindo à {nome}! Agradecemos seu contato. Um de nossos atendentes irá te responder em breve!"
+    else:
+        return (
+            f"Olá! No momento estamos fora do nosso horário de atendimento.\n"
+            f"Nosso horário de funcionamento é de Segunda a Sexta, das {abertura}:00h às {fechamento}:00h.\n"
+            f"Deixe sua mensagem e responderemos assim que abrirmos!"
+        )
 
-        # 2. Resposta quando está ABERTO
-        if is_open:
-            return f"Seja bem-vindo à {nome}! 👋\n\nAgradecemos seu contato. Um de nossos atendentes irá te responder em breve!"
+@app.route("/", methods=["GET", "POST"])
+def webhook():
+    if request.method == "POST":
+        dados = request.get_json(silent=True) or {}
+        mensagem = dados.get("mensagem", "")
+        resposta = responder_mensagem_cliente(mensagem, configuracao_cliente_acre)
+        return jsonify({"resposta": resposta})
+    return "Bot online e a funcionar no Render!"
 
-        # 3. Resposta quando está FECHADO
-        else:
-            return (
-                f"Olá! No momento estamos fora do nosso horário de atendimento.\n"
-                f"Nosso horário de funcionamento é de Segunda a Sexta, das {abertura}:00h às {fechamento}:00h.\n"
-                f"Deixe sua mensagem e responderemos assim que abrirmos!"
-            )
-
-    except Exception as erro:
-        print(f"[ERRO NO SISTEMA]: {erro}")
-        return "Obrigado pelo contato! Já iremos te atender."
-
-
-# ============================================================
-# TRAVA DO TERMINAL PARA O PROGRAMA NÃO FECHAR SOZINHO
-# ============================================================
-print("--- CHATBOT RIO BRANCO INICIADO (Digite 'sair' para encerrar) ---")
-
-while True:
-    mensagem = input("\n> ")
-    if mensagem.lower() == "sair":
-        print("Programa encerrado.")
-        break
-
-    resposta = responder_mensagem_cliente(mensagem, configuracao_cliente_acre)
-    print(f"\n[Bot Responde]:\n{resposta}")
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
